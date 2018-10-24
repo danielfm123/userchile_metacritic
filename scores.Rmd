@@ -170,7 +170,8 @@ ggplot(aux,aes(release_year,userscore, fill = nth_score, group = nth_score)) +
   scale_fill_manual(values = color_generator(10)) + 
   scale_y_continuous(limits = c(min(aux$userscore), 9.5),oob=rescale_none) +  
   geom_vline(xintercept = c(2001,2007,2014) ) + 
-  annotate("text",x=c(2001,2007,2014)+1, y = 9.5, label = c("ps2","ps3","ps4"))
+  annotate("text",x=c(2001,2007,2014)+1, y = 9.5, label = c("ps2","ps3","ps4")) + 
+  ylab("mean_userscore")
 ```
 
 ## Evolucion de las reviews
@@ -198,7 +199,8 @@ ggplot(aux,aes(release_year,metascore, fill = nth_score, group = nth_score)) +
   scale_fill_manual(values = color_generator(10)) + 
   scale_y_continuous(limits = c(min(aux$metascore), 10),oob=rescale_none) +  
   geom_vline(xintercept = c(2001,2007,2014) ) + 
-  annotate("text",x=c(2001,2007,2014)+1, y = 10, label = c("ps2","ps3","ps4"))
+  annotate("text",x=c(2001,2007,2014)+1, y = 10, label = c("ps2","ps3","ps4")) + 
+  ylab("mean_metascore")
 ```
 
 ## Evolucion de la diferencia para los 100 mejores juegos
@@ -214,7 +216,8 @@ ggplot(aux,aes(release_year,mean_critic_love)) +
   geom_line()  + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   geom_vline(xintercept = c(2001,2007,2014) ) + 
-  annotate("text",x=c(2001,2007,2014)+1, y = 2, label = c("ps2","ps3","ps4"))
+  annotate("text",x=c(2001,2007,2014)+1, y = 2, label = c("ps2","ps3","ps4")) + 
+  ylab("mean_criticlove_top100")
 ```
 
 #Publishers
