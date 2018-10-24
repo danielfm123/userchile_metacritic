@@ -1,0 +1,431 @@
+---
+title: "Han Mejorado Los Juegos?"
+output: html_notebook
+---
+
+```{r}
+source("init.R")
+dataset = readRDS("dataset/juegos.RDS")
+library(RColorBrewer)
+library(scales)
+library(broom)
+library(lubridate)
+library(kableExtra)
+colors = brewer.pal(8, "Dark2")
+color_generator <- colorRampPalette(colors)
+seleccionados = c("pc","ps3","ps4","psp","3ds","switch","vita","wii","wii-u","xbox360","xboxone")
+```
+
+# Datos
+
+## Total de casos
+```{r}
+nrow(dataset)
+```
+
+## Casos completos
+```{r}
+table(complete.cases(dataset))
+```
+
+## Ventana
+```{r}
+print(paste0(min(dataset$release_date,na.rm=T),"-",max(dataset$release_date,na.rm=T)))
+```
+
+
+# Evolucion
+
+## Evolucion Releases
+
+trabajaremos con la ventana etre 2001 y 2018-09
+```{r}
+aux = dataset %>% 
+      filter(!is.na(release_month) & release_month < max(release_month,na.rm = T)) %>% 
+      group_by(release_month) %>% 
+      summarise(numero_releases = n())
+ggplot(aux,aes(release_month,numero_releases)) + 
+  annotate("rect",xmin = as.Date("2001-01-01"), xmax = as.Date("2018-10-01"), ymin = 0, ymax=Inf, fill = "blue", alpha = .3,) + 
+  geom_line() +
+  geom_vline(xintercept = as.Date(c("1995-01-01","2000-03-04","2006-11-11","2017-02-22") )) + 
+  annotate("text",x=as.Date(c("1995-01-01","2000-03-04","2006-11-11","2017-02-22") ) + 180, y = 150, label = c("ps1","ps2","ps3","ps4"))
+```
+
+```{r}
+dataset = dataset %>% 
+  filter(release_year >= 2001 & release_month < as.Date("2018-10-01") & !is.na(release_date))
+```
+
+## Releases por sistema
+```{r}
+ggplot(dataset,aes(sistema)) + geom_bar() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Releases mensuales desestacionalizados
+```{r}
+aux = mutate(dataset,month = str_pad(month(release_date),2,pad="0"), year=as.character(year(release_date))) %>%
+      group_by(month,year) %>% 
+      summarise(releases = n())
+fit = lm(releases ~ month + year -1, aux)
+aux = data.frame(month = str_extract(names(coef(fit)[1:12]),"[0-9]+$"), releases = coef(fit)[1:12] - min(coef(fit)[1:12]) )
+ggplot(aux, aes(month,releases)) + 
+  geom_bar(stat ="identity")
+```
+
+## Vida de las consolas
+
+### Anual
+```{r,fig.width=12,fig.height=8}
+aux = dataset %>% 
+  mutate(release_year = as.character(year(release_date))) %>%
+  group_by(sistema,release_year) %>%
+  summarise(releases = n()) %>% 
+  mutate(releases = ifelse(release_year == "2018",releases*12/10,releases))
+ggplot(aux,
+    aes(release_year,releases,color = sistema, group = sistema)) + 
+    scale_color_manual(values = color_generator(length(unique(aux$sistema)))) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_line(size=2) + 
+  geom_point(size = 2)
+```
+
+### Acumulada
+```{r}
+aux = dataset %>% 
+  group_by(sistema) %>% 
+  mutate(from_first_release = as.integer(release_date - min(release_date,na.rm = T))) %>% 
+  ungroup() %>% 
+  mutate(release_year = cut(from_first_release, seq(from = 0, to = 30*12*20, by = 360), include.lowest = T, labels = as.character(1:20) )) %>%
+  group_by(sistema,release_year) %>%
+  summarise(releases = n()) %>% 
+  mutate(releases = ifelse(release_year == "2018",releases*12/10,releases)) %>% 
+  arrange(sistema,release_year) %>% 
+  mutate(cum_releases = cumsum(releases))
+seleccionadas = filter(aux, release_year == "4") #Que tengan 4 años de juegos
+ggplot(filter(aux,sistema %in% seleccionadas$sistema),
+       aes(release_year,cum_releases,color = sistema, group = sistema)) + 
+    scale_color_manual(values = color_generator(length(unique(aux$sistema)))) +
+  geom_line(size=2) + 
+  geom_point(size=2)
+```
+
+## Market Share
+```{r,fig.width=12,fig.height=8}
+ggplot(dataset,aes(release_year, fill = sistema)) + 
+  geom_bar(position="fill") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_fill_manual(values = color_generator(length(unique(dataset$sistema)))) + 
+  ylab("Market Share")
+```
+
+# Evaluaciones
+
+## Por Sistema
+```{r}
+aux = readRDS("dataset/juegos.RDS") %>% 
+  filter(release_month < as.Date("2018-10-01")) %>% 
+  group_by(sistema) %>% 
+  arrange(-userscore) %>% 
+  summarise("01" = mean(userscore[1]),
+            "02" = mean(userscore[1:2]),
+            "03" = mean(userscore[1:3]),
+            "05" = mean(userscore[1:5]),
+            "10" = mean(userscore[1:10]),
+            "15" = mean(userscore[1:15]),
+            "20" = mean(userscore[1:20]),
+            "30" = mean(userscore[1:30]),
+            "40" = mean(userscore[1:40]),
+            "50" = mean(userscore[1:50])) %>% 
+  drop_na() %>% 
+  gather(numero_juegos,userscore,-sistema)
+ggplot(aux,aes(sistema,userscore, fill = numero_juegos)) + 
+  geom_bar(stat = "identity",position="nudge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_fill_manual(values = color_generator(10)) + 
+    scale_y_continuous(limits = c(min(aux$userscore), 9.5),oob=rescale_none)
+```
+
+## Evolucion por año
+```{r}
+aux = dataset %>% 
+  filter(!is.na(userscore)) %>% 
+  group_by(release_year, nombre) %>% 
+  summarise(userscore = mean(userscore)) %>% 
+  group_by(release_year) %>% 
+  arrange(-userscore) %>% 
+  summarise("01" = mean(userscore[1]),
+            "02" = mean(userscore[1:2]),
+            "03" = mean(userscore[1:3]),
+            "05" = mean(userscore[1:5]),
+            "10" = mean(userscore[1:10]),
+            "15" = mean(userscore[1:15]),
+            "20" = mean(userscore[1:20]),
+            "30" = mean(userscore[1:30]),
+            "40" = mean(userscore[1:40]),
+            "50" = mean(userscore[1:50])) %>% 
+  gather(nth_score,userscore,-release_year)
+ggplot(aux,aes(release_year,userscore, fill = nth_score, group = nth_score)) + 
+  geom_area(size = 1.5, position = "nudge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_fill_manual(values = color_generator(10)) + 
+  scale_y_continuous(limits = c(min(aux$userscore), 9.5),oob=rescale_none) +  
+  geom_vline(xintercept = c(2001,2007,2014) ) + 
+  annotate("text",x=c(2001,2007,2014)+1, y = 9.5, label = c("ps2","ps3","ps4"))
+```
+
+## Evolucion de las reviews
+```{r}
+aux = dataset %>% 
+  filter(!is.na(metascore)) %>% 
+  group_by(release_year, nombre) %>% 
+  summarise(metascore = mean(metascore)) %>% 
+  group_by(release_year) %>% 
+  arrange(-metascore) %>% 
+summarise("01" = mean(metascore[1]),
+            "02" = mean(metascore[1:2]),
+            "03" = mean(metascore[1:3]),
+            "05" = mean(metascore[1:5]),
+            "10" = mean(metascore[1:10]),
+            "15" = mean(metascore[1:15]),
+            "20" = mean(metascore[1:20]),
+            "30" = mean(metascore[1:30]),
+            "40" = mean(metascore[1:40]),
+            "50" = mean(metascore[1:50])) %>% 
+  gather(nth_score,metascore,-release_year)
+ggplot(aux,aes(release_year,metascore, fill = nth_score, group = nth_score)) + 
+  geom_area(size = 1.5, position = "nudge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_fill_manual(values = color_generator(10)) + 
+  scale_y_continuous(limits = c(min(aux$metascore), 10),oob=rescale_none) +  
+  geom_vline(xintercept = c(2001,2007,2014) ) + 
+  annotate("text",x=c(2001,2007,2014)+1, y = 10, label = c("ps2","ps3","ps4"))
+```
+
+## Evolucion de la diferencia para los 100 mejores juegos
+```{r}
+aux = filter(dataset, !is.na(userscore) & !is.na(metascore)) %>% 
+  group_by(nombre,release_year) %>% 
+  summarize(critic_love = mean(metascore-userscore), userscore = mean(userscore), metascore = mean(metascore)) %>% 
+  group_by(release_year) %>% 
+  top_n(100,metascore)
+aux = group_by(aux,release_year) %>%
+  summarise(mean_critic_love = mean(critic_love))
+ggplot(aux,aes(release_year,mean_critic_love)) + 
+  geom_line()  + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_vline(xintercept = c(2001,2007,2014) ) + 
+  annotate("text",x=c(2001,2007,2014)+1, y = 2, label = c("ps2","ps3","ps4"))
+```
+
+#Publishers
+
+## Dominancia de mercado
+30 de 1830 tienen aproximadamente el 45% del share de mercado
+```{r}
+dataset = readRDS("dataset/juegos.RDS")
+dataset = dataset %>% 
+  filter(release_year >= 2010 & release_month < as.Date("2018-10-01") & !is.na(release_date))
+dataset = 
+  mutate(dataset, publisher = if_else(is.na(publisher),devel,publisher)) %>% 
+  mutate(criticlove = metascore-userscore) %>% 
+  group_by(publisher) %>% 
+  nest() %>% 
+  mutate(publisher = str_split(publisher," , ")) %>% 
+  mutate(prod = map2(publisher,data,~crossing(publisher = .x,.y) ))
+dataset = bind_rows(dataset[["prod"]])
+```
+
+
+```{r}
+aux = dataset %>% 
+  group_by(publisher) %>% 
+  summarise(releases = n()) %>% 
+  ungroup() %>% 
+  top_n(30,releases) %>% 
+  arrange(-releases) %>% 
+  mutate(share = 100*releases/nrow(dataset),
+         cum_share = cumsum(share))
+ggplot(aux,aes(publisher,share)) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+dominante = aux$publisher
+```
+
+```{r}
+sum(aux$share)
+```
+
+## Influencia
+
+```{r}
+mutate(dataset,
+  dominante = publisher %in% aux$publisher) %>% 
+  group_by(dominante) %>% 
+  summarise(criticlove = mean(criticlove,na.rm = T))
+
+```
+
+## Diferencia estadistica
+```{r}
+aux = dataset %>% 
+  filter(!is.na(criticlove)) %>% 
+  group_by(publisher,nombre) %>% 
+  summarise(metascore = mean(metascore),
+            userscore = mean(userscore),
+            criticlove = mean(criticlove)) %>% 
+  group_by(publisher) %>% 
+  mutate(obs = n()) %>% 
+  filter(obs > 5) %>% 
+  nest() %>% 
+  mutate(data = map(data,~ data.frame(tidy(t.test(.$metascore,.$userscore,paired = T,alternative = "greater")),
+                                      criticlove = mean(.$criticlove),
+                                      casos = nrow(.)))) %>% 
+  unnest(data) %>% 
+  filter(p.value < 0.10) %>% 
+  ungroup() %>% 
+  arrange(p.value) %>% 
+  mutate(dominante = publisher %in% dominante)
+kable(aux[,c("publisher","p.value","criticlove","casos")]) %>% 
+  kable_styling(bootstrap_options = c("striped", full_width = F))
+```
+
+### Dominantes favorecidos
+```{r}
+dominante[dominante %in% favorecidos]
+```
+
+### Dominantes no favorecidos
+```{r}
+dominante[!dominante %in% favorecidos]
+```
+
+# Reviewers
+
+```{r}
+dataset = readRDS("dataset/detalles.RDS")
+dataset = dataset %>% 
+  filter(release_year >= 2010 & release_month < as.Date("2018-10-01") & !is.na(release_date))
+dataset = 
+  mutate(dataset, publisher = if_else(is.na(publisher),devel,publisher)) %>% 
+  mutate(criticlove = metascore-userscore,
+         detail_criticlove = detail_metascore_value - userscore) %>% 
+  group_by(publisher) %>% 
+  nest() %>% 
+  mutate(publisher = str_split(publisher," , ")) %>% 
+  mutate(prod = map2(publisher,data,~crossing(publisher = .x,.y) ))
+dataset = bind_rows(dataset[["prod"]])
+```
+
+## Dominancia de mercado
+los 30 primero de 321 corresponden al 35% de los reviews totales
+```{r}
+aux = dataset %>% 
+  group_by(detail_metascore_source) %>% 
+  summarise(releases = n()) %>% 
+  ungroup() %>% 
+  top_n(30,releases) %>% 
+  arrange(-releases) %>% 
+  mutate(share = 100*releases/nrow(dataset),
+         cum_share = cumsum(share))
+ggplot(aux,aes(detail_metascore_source,share)) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+dominante = aux$detail_metascore_source
+```
+```{r}
+sum(aux$share)
+```
+
+## Contraste criticlove
+```{r}
+tmp = dataset %>% 
+  filter(!is.na(detail_criticlove)) %>% 
+  group_by(publisher,detail_metascore_source) %>% 
+  mutate(obs = n()) %>% 
+  filter(obs > 5) %>% 
+  nest() %>% 
+  mutate(data = map(data,~ data.frame(tidy(t.test(.$detail_criticlove,.$criticlove,paired = T,alternative = "greater")),
+                                      detail_criticlove = mean(.$detail_criticlove),
+                                      casos = nrow(.)))) %>% 
+  unnest(data) %>% 
+  mutate(significativo = p.value < 0.1)
+
+print(mean(tmp$significativo))
+```
+
+### Reviewers favorecedores
+```{r}
+tmp %>% 
+  group_by(detail_metascore_source) %>% 
+  summarise(porcentaje_significativo = mean(significativo),
+            publishers = n(),
+            mean_detail_criticlove = mean(detail_criticlove)) %>% 
+  filter(publishers > 3) %>% 
+  arrange(-porcentaje_significativo)
+```
+
+### Publishers Favorecidos
+```{r}
+tmp %>% 
+  group_by(publisher) %>% 
+  summarise(porcentaje_favorecedor = 100*mean(significativo),
+            reviewers = n(),
+            criticlove = mean(detail_criticlove),
+            criticlove_favorecido = mean(detail_criticlove[significativo])) %>% 
+  filter(reviewers > 10) %>% 
+  arrange(-porcentaje_favorecedor) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", full_width = F))
+# 
+# aux2 = dataset %>% 
+#   left_join(tmp,by=c("publisher","detail_metascore_source")) %>% 
+#   filter(!is.na(significativo)) %>% 
+#   group_by(publisher) %>% 
+#   summarize(porcentaje_reviews = 100*mean(significativo),
+#             numero_reviews = n())
+# 
+# aux1 %>% 
+#   left_join(aux2,by = "publisher") %>% 
+#   arrange(-mean_detail_criticlove) %>% 
+#   kable() %>% 
+#   kable_styling(bootstrap_options = c("striped", full_width = F))
+```
+
+## Contraste userscore (muy acido)
+```{r}
+tmp = dataset %>% 
+  filter(!is.na(criticlove) & !is.na(detail_metascore_value)) %>% 
+  group_by(publisher,detail_metascore_source) %>% 
+  mutate(obs = n()) %>% 
+  filter(obs > 5) %>% 
+  nest() %>% 
+  mutate(data = map(data,~ data.frame(tidy(t.test(.$detail_metascore_value,.$userscore,paired = T,alternative = "greater")),
+                                      detail_criticlove = mean(.$detail_criticlove),
+                                      casos = nrow(.)))) %>% 
+  unnest(data) %>% 
+  mutate(sgnificativo = p.value < 0.1)
+
+print(mean(tmp$sgnificativo))
+```
+
+### Reviewers favorecedores
+```{r}
+tmp %>% 
+  group_by(detail_metascore_source) %>% 
+  summarise(porcentaje_significativo = mean(sgnificativo),
+            publishers = n(),
+            mean_detail_criticlove = mean(detail_criticlove)) %>% 
+  filter(publishers > 5) %>% 
+  arrange(-porcentaje_significativo)
+```
+
+
+### Publishers Favorecidos
+```{r}
+tmp %>% 
+  group_by(publisher) %>% 
+  summarise(porcentaje_significativo = mean(sgnificativo),
+            publishers_totales = n(),
+            mean_criticlove_nfav = mean(detail_criticlove[!sgnificativo]),
+            mean_criticlove_fav = mean(detail_criticlove[sgnificativo])) %>% 
+  filter(publishers_totales > 5) %>% 
+  arrange(-porcentaje_significativo) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", full_width = F))
+```
