@@ -286,6 +286,7 @@ aux = dataset %>%
   ungroup() %>% 
   arrange(p.value) %>% 
   mutate(dominante = publisher %in% dominante)
+favorecidos = aux$publisher
 kable(aux[,c("publisher","p.value","criticlove","casos")]) %>% 
   kable_styling(bootstrap_options = c("striped", full_width = F))
 ```
